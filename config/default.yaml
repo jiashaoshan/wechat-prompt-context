@@ -1,0 +1,73 @@
+# wechat-prompt-context 默认配置
+
+# 默认设置
+defaults:
+  theme: "pie"           # 默认发布主题
+  articleType: "story"   # 默认文章类型
+  highlight: "github"    # 默认代码高亮
+
+# 文章类型映射
+articleTypes:
+  story:
+    name: "故事型"
+    description: "适合情感、人物、经历类文章"
+    template: "story.md"
+  analysis:
+    name: "分析型"
+    description: "适合商业、科技、趋势分析"
+    template: "analysis.md"
+  list:
+    name: "清单型"
+    description: "适合干货、攻略、方法论"
+    template: "list.md"
+  opinion:
+    name: "观点型"
+    description: "适合评论、观点、思考"
+    template: "opinion.md"
+
+# 发布主题列表（来自wechat-toolkit）
+themes:
+  builtin:
+    - pie          # 简洁优雅，默认推荐
+    - lapis        # 深蓝配色，专业感
+    - orangeheart  # 暖橙色调，活力感
+    - rainbow      # 彩虹渐变，活泼感
+    - maize        # 玉米黄，温暖感
+    - purple       # 紫色调，神秘感
+    - phycat       # 物理猫，科技感
+    - default      # 简约默认
+  custom:
+    - aurora       # 极光渐变，视觉冲击
+    - newsroom     # 报纸风格，严肃感
+    - sage         # 清新自然，绿色调
+    - ember        # 暖色调，温馨感
+
+# 代码高亮主题
+highlights:
+  - github
+  - github-dark
+  - atom-one-dark
+  - atom-one-light
+  - dracula
+  - monokai
+  - solarized-dark
+  - solarized-light
+  - xcode
+
+# LLM配置
+llm:
+  model: "kimi-k2.5"
+  maxTokens: 4096
+  temperature: 1  # Moonshot只支持temperature=1
+
+# 搜索配置
+search:
+  xiaohongshu:
+    enabled: true
+    maxResults: 5
+  zhihu:
+    enabled: true
+    maxResults: 5
+  wechat:
+    enabled: true
+    maxResults: 5
