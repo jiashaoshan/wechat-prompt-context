@@ -93,13 +93,16 @@ ${wechat.slice(0, 3).map((w, i) => `${i + 1}. ${w.title}`).join('\n')}
   
   // 解析JSON
   try {
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    // 清理 markdown 代码块标记
+    let cleaned = response.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0]);
     }
-    return JSON.parse(response);
+    return JSON.parse(cleaned);
   } catch (e) {
     console.error('解析分析结果失败:', e.message);
+    console.error('原始响应:', response.substring(0, 200));
     return {
       topic: topic,
       articleType: 'story',
