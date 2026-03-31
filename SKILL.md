@@ -78,7 +78,7 @@ metadata:
 | **输入层** | CLI参数 | 主题词、示例链接、主题样式 |
 | **搜索层** | Tavily API | 小红书/知乎高赞搜索 |
 | | wechat-article-search | 公众号高赞搜索 |
-| **生成层** | Moonshot kimi-k2.5 | LLM生成提示词和文章 |
+| **生成层** | 笔杆子 agent | OpenClaw agent 路由，支持 Supermemory |
 | | prompt-engineering-expert | 提示词优化 |
 | | 豆包Seedream 5.0 | 封面图生成 |
 | **确认层** | Node.js readline | 交互式用户确认 |
@@ -96,8 +96,30 @@ metadata:
 | 1 | **analyze-topic.js** | 智能分析模糊主题词 | 推荐主题+文章类型+目标读者+核心卖点 |
 | 2 | **generate-prompt.js** / **extract-prompt.js** | 生成提示词（双模式） | 完整提示词 |
 | 3 | **confirm-prompt.js** | 用户确认提示词 | 确认后的提示词 |
-| 4 | **write-article.js** | 生成完整文章 | article.md + cover.jpg |
+| 4 | **write-article.js** | 通过笔杆子 agent 生成文章 | article.md + cover.jpg |
 | 5 | **publish.js** | 发布到公众号 | 草稿箱文章 |
+
+### 文章生成方式（v1.1 更新）
+
+**笔杆子 agent 路由（推荐）**：
+```
+write-article.js
+    ↓
+openclaw agent --agent creator
+    ↓
+Supermemory 自动注入
+    ↓
+生成文章
+```
+
+**优势**：
+- ✅ 自动整合 Supermemory 长期记忆
+- ✅ 支持框架级模型配置
+- ✅ 无需手动管理 API Key
+- ✅ 失败自动回退到直接 LLM 调用
+
+**备用：直接 LLM 调用**：
+- 当 agent 路由失败时，自动回退到 `wechat-ai-writer` 的 LLM 客户端
 
 ### 双模式提示词生成
 
@@ -449,6 +471,12 @@ output/
 
 ## 更新日志
 
+- **v1.1** - 2026-03-30
+  - 重构文章生成：通过笔杆子 agent 路由
+  - 支持 Supermemory 记忆自动注入
+  - 失败自动回退到直接 LLM 调用
+  - 字数要求调整：2000-3000 字
+
 - **v1.0** - 初始版本
   - 支持模糊主题分析
   - 支持模板生成和示例反推两种提示词生成方式
@@ -469,5 +497,5 @@ output/
 ---
 
 **作者**：主语说  
-**版本**：v1.0  
-**更新日期**：2026-03-21
+**版本**：v1.1  
+**更新日期**：2026-03-30
