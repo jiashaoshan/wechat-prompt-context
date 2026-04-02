@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
  * 步骤1：分析主题
- * 搜索小红书/公众号/知乎高赞，智能分析生成文章主题
+ * 搜索小红书/公众号/知乎高赞，使用笔杆子 agent 分析生成文章主题
  */
 
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execSync } = require('child_process');
 
 // 兼容 path.expanduser
 path.expanduser = function(filepath) {
@@ -21,7 +22,6 @@ async function searchXiaohongshuHot(topic, maxResults = 5) {
   // 方案1: 尝试使用 Python Playwright 脚本
   try {
     const scriptPath = path.expanduser('~/.openclaw/workspace/skills/xiaohongshu-search-summarizer/scripts/search_xiaohongshu.py');
-    const { execSync } = require('child_process');
     const result = execSync(`python3 "${scriptPath}" "${topic}" ${maxResults}`, { 
       encoding: 'utf8',
       timeout: 60000
@@ -52,34 +52,6 @@ async function searchXiaohongshuHot(topic, maxResults = 5) {
   }
 }
 
-// 解析小红书 raw_data.md 文件
-function parseXiaohongshuRawData(content) {
-  const posts = [];
-  const sections = content.split(/\n## \d+\./);
-  
-  for (const section of sections.slice(1)) {
-    const lines = section.trim().split('\n');
-    let title = '';
-    let summary = '';
-    
-    for (const line of lines) {
-      if (line.startsWith('**标题**:')) {
-        title = line.replace('**标题**:', '').trim();
-      } else if (line.startsWith('**描述**:')) {
-        summary = line.replace('**描述**:', '').trim();
-      } else if (line.startsWith('**内容**:')) {
-        if (!summary) summary = line.replace('**内容**:', '').trim();
-      }
-    }
-    
-    if (title) {
-      posts.push({ title, summary: summary || '无摘要' });
-    }
-  }
-  
-  return posts;
-}
-
 // 搜索知乎高赞
 async function searchZhihuHot(topic, maxResults = 5) {
   try {
@@ -96,7 +68,6 @@ async function searchZhihuHot(topic, maxResults = 5) {
 async function searchWechatHot(topic, maxResults = 5) {
   try {
     const searchScript = path.expanduser('~/.openclaw/workspace/skills/wechat-article-search/scripts/search_wechat.js');
-    const { execSync } = require('child_process');
     const result = execSync(`node "${searchScript}" "${topic}" -n ${maxResults}`, { encoding: 'utf8' });
     const data = JSON.parse(result);
     return (data.articles || []).map(a => ({ title: a.title, summary: a.summary }));
@@ -106,18 +77,14 @@ async function searchWechatHot(topic, maxResults = 5) {
   }
 }
 
-// 调用LLM分析
-async function analyzeWithLLM(topic, xiaohongshu, zhihu, wechat) {
-  const { callLLM } = require('../../wechat-ai-writer/scripts/llm-client');
+// 调用笔杆子 agent 分析
+async function analyzeWithAgent(topic, xiaohongshu, zhihu, wechat) {
+  console.log('   → 调用笔杆子 agent 分析...');
   
-  const messages = [
-    {
-      role: 'system',
-      content: '你是一位资深内容策划，擅长分析热点话题，提炼最佳文章角度。'
-    },
-    {
-      role: 'user',
-      content: `基于以下关于"${topic}"的高赞内容，分析最佳文章角度：
+  // 构建提示词
+  const prompt = `你是一位资深内容策划，擅长分析热点话题，提炼最佳文章角度。
+
+基于以下关于"${topic}"的高赞内容，分析最佳文章角度：
 
 【小红书高赞】
 ${xiaohongshu.slice(0, 3).map((x, i) => `${i + 1}. ${x.title}`).join('\n')}
@@ -137,46 +104,64 @@ ${wechat.slice(0, 3).map((w, i) => `${i + 1}. ${w.title}`).join('\n')}
   "angle": "独特角度（与现有文章的区别）"
 }
 
-只输出JSON，不要其他文字。`
-    }
-  ];
-  
-  // 重试机制
-  let lastError = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const response = await callLLM(messages, { maxTokens: 2048 });
-      
-      // 解析JSON
-      let cleaned = response.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        console.log('   ✅ LLM 分析成功');
-        return parsed;
-      }
-      const parsed = JSON.parse(cleaned);
-      console.log('   ✅ LLM 分析成功');
-      return parsed;
-    } catch (e) {
-      lastError = e;
-      console.log(`   ⚠️ 第 ${attempt + 1} 次解析失败: ${e.message}`);
-      if (attempt < 2) {
-        console.log('   重试中...');
-        await new Promise(r => setTimeout(r, 1000));
-      }
-    }
+只输出JSON，不要其他文字。`;
+
+  // 保存提示词到临时文件
+  const tempDir = path.join(__dirname, '../output');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
   }
-  
-  console.error('解析分析结果失败，使用默认值');
-  console.error('最后错误:', lastError.message);
-  return {
-    topic: topic,
-    articleType: 'story',
-    targetAudience: '对' + topic + '感兴趣的读者',
-    sellingPoint: topic + '的真相',
-    angle: '深度分析'
-  };
+  const promptPath = path.join(tempDir, 'analyze_prompt.txt');
+  fs.writeFileSync(promptPath, prompt, 'utf-8');
+
+  // 调用笔杆子 agent
+  try {
+    const openclawCmd = `openclaw agent --agent creator --file "${promptPath}" --json --timeout 300`;
+    
+    const result = execSync(openclawCmd, {
+      encoding: 'utf-8',
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 300000 // 5分钟
+    });
+
+    // 解析返回结果
+    let response = '';
+    try {
+      const parsed = JSON.parse(result);
+      if (parsed.result && parsed.result.payloads && parsed.result.payloads.length > 0) {
+        response = parsed.result.payloads.map(p => p.text || '').join('\n');
+      } else if (parsed.text) {
+        response = parsed.text;
+      }
+    } catch (e) {
+      response = result;
+    }
+
+    // 解析JSON
+    let cleaned = response.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      console.log('   ✅ 笔杆子 agent 分析成功');
+      return parsed;
+    }
+    
+    // 尝试直接解析
+    const parsed = JSON.parse(cleaned);
+    console.log('   ✅ 笔杆子 agent 分析成功');
+    return parsed;
+    
+  } catch (e) {
+    console.error('   ⚠️ 笔杆子 agent 分析失败:', e.message);
+    // 返回默认值
+    return {
+      topic: topic,
+      articleType: 'story',
+      targetAudience: '对' + topic + '感兴趣的读者',
+      sellingPoint: topic + '的真相',
+      angle: '深度分析'
+    };
+  }
 }
 
 // 主函数
@@ -196,9 +181,9 @@ async function analyzeTopic(fuzzyTopic) {
   const wechat = await searchWechatHot(fuzzyTopic);
   console.log(`   ✅ 找到 ${wechat.length} 篇`);
   
-  // LLM分析
+  // 笔杆子 agent 分析
   console.log('   智能分析中...');
-  const analysis = await analyzeWithLLM(fuzzyTopic, xiaohongshu, zhihu, wechat);
+  const analysis = await analyzeWithAgent(fuzzyTopic, xiaohongshu, zhihu, wechat);
   
   // 保存结果
   const outputDir = path.join(__dirname, '../output');

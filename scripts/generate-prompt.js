@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
  * 生成提示词
- * 方式A：固定模板 + prompt-engineering-expert 优化
+ * 使用笔杆子 agent 优化
  */
 
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execSync } = require('child_process');
 
 // 兼容 path.expanduser
 path.expanduser = function(filepath) {
@@ -37,29 +38,12 @@ function loadTemplate(articleType) {
   return fs.readFileSync(defaultPath, 'utf8');
 }
 
-// 使用 prompt-engineering-expert 优化
-async function optimizeWithPromptExpert(baseTemplate, topic) {
-  console.log('   使用 prompt-engineering-expert 优化...');
+// 使用笔杆子 agent 优化
+async function optimizeWithAgent(baseTemplate, topic) {
+  console.log('   使用笔杆子 agent 优化...');
   
-  const promptExpertPath = path.join(
-    os.homedir(),
-    '.openclaw/workspace/skills/prompt-engineering-expert'
-  );
-  
-  // 读取 SKILL.md
-  let skillMd = '';
-  try {
-    skillMd = fs.readFileSync(path.join(promptExpertPath, 'SKILL.md'), 'utf8');
-  } catch (e) {
-    console.log('   ⚠️ 未找到 prompt-engineering-expert，使用默认优化');
-  }
-  
-  const { callLLM } = require('../../wechat-ai-writer/scripts/llm-client');
-  
-  const messages = [
-    {
-      role: 'system',
-      content: `你是一位提示词工程专家。请优化以下提示词模板，使其更适合生成关于"${topic}"的公众号文章。
+  // 构建提示词
+  const prompt = `你是一位提示词工程专家。请优化以下提示词模板，使其更适合生成关于"${topic}"的公众号文章。
 
 优化原则：
 1. 使用 XML 标签明确结构（<instruction>, <example>, <output>）
@@ -68,11 +52,7 @@ async function optimizeWithPromptExpert(baseTemplate, topic) {
 4. 使用角色设定增强效果
 5. 添加约束条件（字数、风格等）
 
-${skillMd ? '参考以下最佳实践：\n' + skillMd.substring(0, 1500) : ''}`
-    },
-    {
-      role: 'user',
-      content: `请优化以下提示词模板：
+请优化以下提示词模板：
 
 ${baseTemplate}
 
@@ -81,12 +61,49 @@ ${baseTemplate}
 - 增加具体的示例和约束
 - 使用更明确的指令格式
 - 确保输出是可直接使用的完整提示词
-- 主题：${topic}`
+- 主题：${topic}
+
+直接输出优化后的完整提示词，不要解释。`;
+
+  // 保存提示词到临时文件
+  const tempDir = path.join(__dirname, '../output');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+  const promptPath = path.join(tempDir, 'optimize_prompt.txt');
+  fs.writeFileSync(promptPath, prompt, 'utf-8');
+
+  // 调用笔杆子 agent
+  try {
+    const openclawCmd = `openclaw agent --agent creator --file "${promptPath}" --json --timeout 300`;
+    
+    const result = execSync(openclawCmd, {
+      encoding: 'utf-8',
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 300000 // 5分钟
+    });
+
+    // 解析返回结果
+    let optimized = '';
+    try {
+      const parsed = JSON.parse(result);
+      if (parsed.result && parsed.result.payloads && parsed.result.payloads.length > 0) {
+        optimized = parsed.result.payloads.map(p => p.text || '').join('\n');
+      } else if (parsed.text) {
+        optimized = parsed.text;
+      }
+    } catch (e) {
+      optimized = result;
     }
-  ];
-  
-  const optimized = await callLLM(messages, { maxTokens: 2048 });
-  return optimized;
+
+    console.log('   ✅ 笔杆子 agent 优化完成');
+    return optimized;
+    
+  } catch (e) {
+    console.error('   ⚠️ 笔杆子 agent 优化失败:', e.message);
+    // 返回原模板
+    return baseTemplate;
+  }
 }
 
 // 填充变量
@@ -104,8 +121,8 @@ async function generatePrompt(topic, articleType, userContext = '') {
   console.log(`   加载 ${articleType} 模板...`);
   const baseTemplate = loadTemplate(articleType);
   
-  // 2. 使用 prompt-engineering-expert 优化
-  const optimizedTemplate = await optimizeWithPromptExpert(baseTemplate, topic);
+  // 2. 使用笔杆子 agent 优化
+  const optimizedTemplate = await optimizeWithAgent(baseTemplate, topic);
   
   // 3. 填充主题
   const finalPrompt = fillTemplate(optimizedTemplate, topic, userContext);
