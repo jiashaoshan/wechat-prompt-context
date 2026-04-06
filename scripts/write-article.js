@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execSync } = require('child_process');
+const { spawn } = require('child_process');
 
 // 兼容 path.expandhome
 function expandHome(filepath) {
@@ -17,7 +17,7 @@ function expandHome(filepath) {
   return filepath;
 }
 
-// 通过笔杆子 agent 生成文章
+// 通过笔杆子 agent 生成文章（spawn流式，避免execSync缓冲区死锁）
 async function writeArticleWithAgent(prompt, topic) {
   console.log('✍️ 通过笔杆子 agent 生成文章...');
   
@@ -36,41 +36,93 @@ ${prompt}
 
 请直接开始写作：`;
 
-  try {
-    // 调用 openclaw agent 命令
-    const result = execSync(
-      `openclaw agent --agent creator -m '${message.replace(/'/g, "'\\''")}' --json --timeout 600 2>/dev/null`,
-      {
-        encoding: 'utf-8',
-        maxBuffer: 10 * 1024 * 1024, // 10MB
-        timeout: 600000 // 10分钟
-      }
-    );
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      if (child) child.kill('SIGTERM');
+      reject(new Error('agent 调用超时 (600s)'));
+    }, 600000);
     
-    const response = JSON.parse(result);
+    let stdout = '';
+    let stderr = '';
+    let child;
     
-    if (response.status !== 'ok') {
-      throw new Error(`Agent 错误: ${response.status}`);
+    try {
+      child = spawn('openclaw', [
+        'agent', '--agent', 'creator',
+        '-m', message,
+        '--json',
+        '--timeout', '600'
+      ], {
+        env: { ...process.env },
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      
+      child.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      
+      child.stderr.on('data', (data) => {
+        stderr += data.toString();
+        // 实时输出非JSON的stderr（进度信息）
+        const lines = data.toString().trim().split('\n').filter(l => l.trim());
+        lines.forEach(l => console.log(`   ${l}`));
+      });
+      
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        
+        if (code !== 0) {
+          console.error(`   ❌ agent 退出码: ${code}`);
+          if (stderr) console.error(`   stderr: ${stderr.slice(-500)}`);
+          reject(new Error(`agent 退出码 ${code}`));
+          return;
+        }
+        
+        try {
+          // 从stdout中找最后一个JSON对象
+          const jsonMatch = stdout.match(/\{[\s\S]*\}$/);
+          if (!jsonMatch) {
+            reject(new Error(`无法解析JSON响应, stdout长度: ${stdout.length}`));
+            return;
+          }
+          
+          const response = JSON.parse(jsonMatch[0]);
+          
+          if (response.status !== 'ok') {
+            reject(new Error(`Agent 错误: ${response.status}`));
+            return;
+          }
+          
+          let article = '';
+          if (response.result && response.result.payloads && response.result.payloads.length > 0) {
+            article = response.result.payloads.map(p => p.text || '').join('\n');
+          }
+          
+          if (!article) {
+            reject(new Error('Agent 返回内容为空'));
+            return;
+          }
+          
+          console.log('   ✅ 文章生成完成');
+          resolve(article);
+        } catch (e) {
+          reject(new Error(`JSON解析失败: ${e.message}`));
+        }
+      });
+      
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      reject(e);
     }
-    
-    // 提取文章内容 - 从 payloads 中提取文本
-    let article = '';
-    if (response.result && response.result.payloads && response.result.payloads.length > 0) {
-      article = response.result.payloads.map(p => p.text || '').join('\n');
-    }
-    
-    if (!article) {
-      throw new Error('Agent 返回内容为空');
-    }
-    
-    console.log('   ✅ 文章生成完成');
-    return article;
-    
-  } catch (error) {
+  }).catch(async (error) => {
     console.error('   ❌ 笔杆子 agent 调用失败:', error.message);
     console.log('   🔄 回退到直接 LLM 调用...');
     return await writeArticleWithLLM(prompt, topic);
-  }
+  });
 }
 
 // 备用：直接调用 LLM
