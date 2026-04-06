@@ -10,13 +10,13 @@ const path = require('path');
 const os = require('os');
 const https = require('https');
 
-// 兼容 path.expanduser
-path.expanduser = function(filepath) {
+// 修复 TDZ 问题：使用独立函数替代修改原生 path
+function expandUser(filepath) {
   if (filepath.startsWith('~/')) {
     return path.join(os.homedir(), filepath.slice(2));
   }
   return filepath;
-};
+}
 
 // 获取文章内容
 async function fetchArticle(url) {

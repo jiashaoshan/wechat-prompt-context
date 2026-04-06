@@ -9,13 +9,13 @@ const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 
-// 兼容 path.expanduser
-path.expanduser = function(filepath) {
+// 修复 TDZ 问题：使用独立函数替代修改原生 path
+function expandUser(filepath) {
   if (filepath.startsWith('~/')) {
     return path.join(os.homedir(), filepath.slice(2));
   }
   return filepath;
-};
+}
 
 // 加载配置
 function loadConfig() {
@@ -75,7 +75,10 @@ ${baseTemplate}
 
   // 调用笔杆子 agent
   try {
-    const openclawCmd = `openclaw agent --agent creator --file "${promptPath}" --json --timeout 300`;
+    // 修复：使用 -m 参数传递提示词内容，而不是 --file
+    const promptContent = fs.readFileSync(promptPath, 'utf-8');
+    const escapedPrompt = promptContent.replace(/'/g, "'\\''").replace(/"/g, '\\"');
+    const openclawCmd = `openclaw agent --agent creator -m "${escapedPrompt}" --json --timeout 300 2>/dev/null`;
     
     const result = execSync(openclawCmd, {
       encoding: 'utf-8',

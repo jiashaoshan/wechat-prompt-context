@@ -9,19 +9,19 @@ const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 
-// 兼容 path.expanduser
-path.expanduser = function(filepath) {
+// 修复 TDZ 问题：使用独立函数替代修改原生 path
+function expandUser(filepath) {
   if (filepath.startsWith('~/')) {
     return path.join(os.homedir(), filepath.slice(2));
   }
   return filepath;
-};
+}
 
 // 搜索小红书高赞
 async function searchXiaohongshuHot(topic, maxResults = 5) {
   // 方案1: 尝试使用 Python Playwright 脚本
   try {
-    const scriptPath = path.expanduser('~/.openclaw/workspace/skills/xiaohongshu-search-summarizer/scripts/search_xiaohongshu.py');
+    const scriptPath = expandUser('~/.openclaw/workspace/skills/xiaohongshu-search-summarizer/scripts/search_xiaohongshu.py');
     const result = execSync(`python3 "${scriptPath}" "${topic}" ${maxResults}`, { 
       encoding: 'utf8',
       timeout: 60000
@@ -67,7 +67,7 @@ async function searchZhihuHot(topic, maxResults = 5) {
 // 搜索公众号高赞
 async function searchWechatHot(topic, maxResults = 5) {
   try {
-    const searchScript = path.expanduser('~/.openclaw/workspace/skills/wechat-article-search/scripts/search_wechat.js');
+    const searchScript = expandUser('~/.openclaw/workspace/skills/wechat-article-search/scripts/search_wechat.js');
     const result = execSync(`node "${searchScript}" "${topic}" -n ${maxResults}`, { encoding: 'utf8' });
     const data = JSON.parse(result);
     return (data.articles || []).map(a => ({ title: a.title, summary: a.summary }));
@@ -129,7 +129,10 @@ ${wechat.slice(0, 3).map((w, i) => `${i + 1}. ${w.title}`).join('\n')}
 
   // 调用笔杆子 agent
   try {
-    const openclawCmd = `openclaw agent --agent creator --file "${promptPath}" --json --timeout 300`;
+    // 修复：使用 -m 参数传递提示词内容，而不是 --file
+    const promptContent = fs.readFileSync(promptPath, 'utf-8');
+    const escapedPrompt = promptContent.replace(/'/g, "'\\''").replace(/"/g, '\\"');
+    const openclawCmd = `openclaw agent --agent creator -m "${escapedPrompt}" --json --timeout 300 2>/dev/null`;
     
     const result = execSync(openclawCmd, {
       encoding: 'utf-8',

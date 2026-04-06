@@ -39,7 +39,7 @@ ${prompt}
   try {
     // 调用 openclaw agent 命令
     const result = execSync(
-      `openclaw agent --agent creator --message '${message.replace(/'/g, "'\\''")}' --json --timeout 600`,
+      `openclaw agent --agent creator -m '${message.replace(/'/g, "'\\''")}' --json --timeout 600 2>/dev/null`,
       {
         encoding: 'utf-8',
         maxBuffer: 10 * 1024 * 1024, // 10MB
