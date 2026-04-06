@@ -1,0 +1,16 @@
+# 临时输出文件
+output/
+*.log
+
+# 依赖
+node_modules/
+
+# 环境变量
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
