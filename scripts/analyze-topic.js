@@ -98,11 +98,24 @@ ${wechat.slice(0, 3).map((w, i) => `${i + 1}. ${w.title}`).join('\n')}
 请输出JSON格式：
 {
   "topic": "推荐文章主题（具体、有吸引力）",
-  "articleType": "推荐文章类型（story/analysis/list/opinion）",
+  "articleType": "推荐文章类型（story/analysis/list/opinion/tech-report）",
   "targetAudience": "目标读者画像",
   "sellingPoint": "核心卖点/钩子（一句话）",
   "angle": "独特角度（与现有文章的区别）"
 }
+
+文章类型选择指南：
+- story: 情感、人物、个人经历
+- analysis: 趋势分析、行业观察
+- list: 干货清单、方法论
+- opinion: 观点评论、思考
+- tech-report: 科技产品深度报道、创业故事+商业模式分析（如AI硬件、创新产品、科技公司）
+- marketing-trend: 消费趋势洞察、品牌营销案例、新消费现象分析（如品类崛起、人群变迁、品牌策略）
+- investigation: 深度调查报道、社会纪实（如事故调查、政策后遗症、边缘群体、环境灾难、职业纪实、城乡变迁）
+- cinema-culture: 影视评论、文化分析（如票房现象、类型片研究、电影文化基因、影视产业观察）
+- lifestyle-healing: 生活方式、心灵疗愈（如独处美学、社交边界、心理疗愈、人生哲学、中年危机、反内卷）
+- edu-course: 教育类课程推广（如知识付费、亲子教育、素质教育、研学旅行、课程营销软文）
+- industry-evolution: 行业趋势、职业演进（如岗位消亡预警、技术变革分析、职业演进史、新职业定义、组织能力重构）
 
 只输出JSON，不要其他文字。`;
 

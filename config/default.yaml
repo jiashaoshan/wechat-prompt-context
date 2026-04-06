@@ -24,6 +24,34 @@ articleTypes:
     name: "观点型"
     description: "适合评论、观点、思考"
     template: "opinion.md"
+  tech-report:
+    name: "科技深度报道"
+    description: "适合科技产品、商业模式、创业故事的深度报道"
+    template: "tech-report.md"
+  marketing-trend:
+    name: "消费趋势·品牌营销"
+    description: "适合消费洞察、品牌案例、营销趋势、人群分析的深度文章"
+    template: "marketing-trend.md"
+  investigation:
+    name: "深度调查报道·社会纪实"
+    description: "适合事故调查、政策后遗症、边缘群体、环境灾难、职业纪实、城乡变迁的深度调查"
+    template: "investigation.md"
+  cinema-culture:
+    name: "影视评论·文化分析"
+    description: "适合票房现象解读、类型片研究、文化基因分析、影视产业观察的深度评论"
+    template: "cinema-culture.md"
+  lifestyle-healing:
+    name: "生活方式·心灵疗愈"
+    description: "适合独处美学、社交边界、心理疗愈、人生哲学、反内卷的生活方式随笔"
+    template: "lifestyle-healing.md"
+  edu-course:
+    name: "教育类课程推广"
+    description: "适合知识付费、课程营销、亲子教育、素质教育、研学旅行的软文推广"
+    template: "edu-course.md"
+  industry-evolution:
+    name: "行业趋势·职业演进"
+    description: "适合职业消亡预警、技术变革分析、岗位演进史、新职业定义、组织能力重构"
+    template: "industry-evolution.md"
 
 # 发布主题列表（来自wechat-toolkit）
 themes:

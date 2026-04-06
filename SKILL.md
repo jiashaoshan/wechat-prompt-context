@@ -163,7 +163,7 @@ LLM分析：
 - 需要模仿特定风格
 - 精确控制输出质量
 
-### 4种文章类型模板
+### 11种文章类型模板
 
 | 类型 | 文件 | 适用场景 | 特点 |
 |------|------|----------|------|
@@ -171,6 +171,13 @@ LLM分析：
 | **analysis** | analysis.md | 商业、科技、趋势 | 逻辑清晰、数据支撑 |
 | **list** | list.md | 干货、攻略、方法论 | 步骤清晰、可操作 |
 | **opinion** | opinion.md | 评论、观点、思考 | 有态度、论据扎实 |
+| **tech-report** | tech-report.md | 科技产品、创业故事 | 产品拆解+商业模式+创业史 |
+| **marketing-trend** | marketing-trend.md | 消费洞察、品牌案例 | 趋势解读+品牌解法+文化基因 |
+| **investigation** | investigation.md | 事故调查、政策后遗症 | 现场还原+人物肖像+系统性困境 |
+| **cinema-culture** | cinema-culture.md | 票房现象、类型片研究 | 类型拆解+文化基因+批判分析 |
+| **lifestyle-healing** | lifestyle-healing.md | 独处美学、心理疗愈 | 价值重估+名人例证+实操方法 |
+| **edu-course** | edu-course.md | 知识付费、课程推广 | 痛点切入+概念包装+产品落地 |
+| **industry-evolution** | industry-evolution.md | 岗位演进、技术变革 | 历史纵深+概念创新+哲学提炼 |
 
 ### 人机协作确认机制
 
@@ -470,6 +477,11 @@ output/
 ---
 
 ## 更新日志
+
+- **v1.2** - 2026-04-05
+  - 新增7种文章类型模板，共11种
+  - 科技深度报道、消费趋势、深度调查、影视评论、生活方式、教育推广、行业演进
+  - 更新 analyze-topic.js 文章类型识别逻辑
 
 - **v1.1** - 2026-03-30
   - 重构文章生成：通过笔杆子 agent 路由

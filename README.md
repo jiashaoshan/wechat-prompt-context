@@ -419,6 +419,13 @@ output/
 | 科技评论 | lapis, phycat |
 | 生活感悟 | sage, pie |
 | 创意设计 | aurora, purple |
+| 科技深度报道 | tech-report |
+| 消费趋势·品牌营销 | marketing-trend |
+| 深度调查·社会纪实 | investigation |
+| 影视评论·文化分析 | cinema-culture |
+| 生活方式·心灵疗愈 | lifestyle-healing |
+| 教育推广·课程营销 | edu-course |
+| 行业趋势·职业演进 | industry-evolution |
 
 ---
 
@@ -456,6 +463,17 @@ output/
 
 ## 📝 更新日志
 
+- **v1.2** - 2026-04-05
+  - 新增7种文章类型模板（共11种）
+  - tech-report: 科技深度报道
+  - marketing-trend: 消费趋势·品牌营销
+  - investigation: 深度调查·社会纪实
+  - cinema-culture: 影视评论·文化分析
+  - lifestyle-healing: 生活方式·心灵疗愈
+  - edu-course: 教育推广·课程营销
+  - industry-evolution: 行业趋势·职业演进
+  - 更新 analyze-topic.js 文章类型智能识别
+
 - **v1.1** - 2026-03-30
   - 重构文章生成：通过笔杆子 agent 路由
   - 支持 Supermemory 记忆自动注入
@@ -467,3 +485,4 @@ output/
   - 支持模板生成和示例反推两种提示词生成方式
   - 支持人机协作确认
   - 支持多主题样式发布
+  - 4种文章类型模板
