@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn } = require('child_process');
+const https = require('https');
 
 // 兼容 path.expandhome
 function expandHome(filepath) {
@@ -18,8 +18,9 @@ function expandHome(filepath) {
 }
 
 // 通过笔杆子 agent 生成文章（spawn流式，避免execSync缓冲区死锁）
+// 通过直接API调用生成文章（避免openclaw agent被SIGKILL）
 async function writeArticleWithAgent(prompt, topic) {
-  console.log('✍️ 通过笔杆子 agent 生成文章...');
+  console.log('✍️ 通过API直接调用生成文章...');
   
   const message = `请根据以下提示词创作一篇公众号文章：
 
@@ -36,93 +37,54 @@ ${prompt}
 
 请直接开始写作：`;
 
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      if (child) child.kill('SIGTERM');
-      reject(new Error('agent 调用超时 (600s)'));
-    }, 600000);
-    
-    let stdout = '';
-    let stderr = '';
-    let child;
-    
-    try {
-      child = spawn('openclaw', [
-        'agent', '--agent', 'creator',
-        '-m', message,
-        '--json',
-        '--timeout', '600'
-      ], {
-        env: { ...process.env },
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-      
-      child.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-      
-      child.stderr.on('data', (data) => {
-        stderr += data.toString();
-        // 实时输出非JSON的stderr（进度信息）
-        const lines = data.toString().trim().split('\n').filter(l => l.trim());
-        lines.forEach(l => console.log(`   ${l}`));
-      });
-      
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        
-        if (code !== 0) {
-          console.error(`   ❌ agent 退出码: ${code}`);
-          if (stderr) console.error(`   stderr: ${stderr.slice(-500)}`);
-          reject(new Error(`agent 退出码 ${code}`));
-          return;
-        }
-        
-        try {
-          // 从stdout中找最后一个JSON对象
-          const jsonMatch = stdout.match(/\{[\s\S]*\}$/);
-          if (!jsonMatch) {
-            reject(new Error(`无法解析JSON响应, stdout长度: ${stdout.length}`));
-            return;
-          }
-          
-          const response = JSON.parse(jsonMatch[0]);
-          
-          if (response.status !== 'ok') {
-            reject(new Error(`Agent 错误: ${response.status}`));
-            return;
-          }
-          
-          let article = '';
-          if (response.result && response.result.payloads && response.result.payloads.length > 0) {
-            article = response.result.payloads.map(p => p.text || '').join('\n');
-          }
-          
-          if (!article) {
-            reject(new Error('Agent 返回内容为空'));
-            return;
-          }
-          
-          console.log('   ✅ 文章生成完成');
-          resolve(article);
-        } catch (e) {
-          reject(new Error(`JSON解析失败: ${e.message}`));
-        }
-      });
-      
-      child.on('error', (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-    } catch (e) {
-      clearTimeout(timer);
-      reject(e);
-    }
-  }).catch(async (error) => {
-    console.error('   ❌ 笔杆子 agent 调用失败:', error.message);
-    console.log('   🔄 回退到直接 LLM 调用...');
-    return await writeArticleWithLLM(prompt, topic);
+  const apiKey = 'sk-7795ea7cafd74636834b271471022594';
+  const body = JSON.stringify({
+    model: 'qwen3.6-plus',
+    messages: [{ role: 'user', content: message }],
+    temperature: 0.8,
+    max_tokens: 8192
   });
+  
+  console.log('   🚀 调用API生成文章...');
+  
+  try {
+    const response = await new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: 'dashscope.aliyuncs.com',
+        path: '/compatible-mode/v1/chat/completions',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        timeout: 600000
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => resolve({ status: res.statusCode, data }));
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('API超时')); });
+      req.write(body);
+      req.end();
+    });
+    
+    if (response.status !== 200) {
+      throw new Error(`API错误 ${response.status}: ${response.data.slice(0, 300)}`);
+    }
+    
+    const parsed = JSON.parse(response.data);
+    const article = parsed.choices?.[0]?.message?.content || '';
+    
+    if (!article) {
+      throw new Error('API返回内容为空');
+    }
+    
+    console.log('   ✅ 文章生成完成');
+    return article;
+  } catch (e) {
+    throw new Error(`API调用失败: ${e.message}`);
+  }
 }
 
 // 备用：直接调用 LLM
@@ -151,8 +113,10 @@ async function writeArticleWithLLM(prompt, topic) {
 // 添加 Frontmatter
 function addFrontmatter(article, topic, coverPath) {
   const title = generateTitle(topic);
+  // 修复：转义title中的双引号，避免YAML解析错误
+  const escapedTitle = title.replace(/"/g, '\\"');
   const frontmatter = `---
-title: "${title}"
+title: "${escapedTitle}"
 cover: "${coverPath}"
 author: "主语说"
 date: "${new Date().toISOString().split('T')[0]}"
@@ -213,12 +177,34 @@ async function main(prompt, topic) {
   // 添加 Frontmatter
   const articleWithFrontmatter = addFrontmatter(article, topic, coverPath);
   
+  // 验证文章完整性（字数检查）
+  const bodyMatch = articleWithFrontmatter.match(/^---\s*\n[\s\S]*?\n---\s*\n([\s\S]*)$/);
+  const body = bodyMatch ? bodyMatch[1] : article;
+  const wordCount = body.replace(/\s/g, '').length;
+  const minWordCount = 1500;
+  
+  console.log(`\n📊 字数统计：${wordCount} 字符 (最低要求: ${minWordCount})`);
+  
+  if (wordCount < minWordCount) {
+    console.error(`❌ 文章字数不足: ${wordCount} < ${minWordCount}，生成不完整`);
+    throw new Error(`文章生成不完整: 字数 ${wordCount} < ${minWordCount}`);
+  }
+  
+  // 验证编码完整性（只检测UTF-8替换字符U+FFFD）
+  const replacementChar = String.fromCharCode(0xFFFD);
+  const garbledCount = (body.split(replacementChar).length - 1);
+  
+  if (garbledCount > 5) { // 允许少量替换字符
+    console.error(`❌ 检测到乱码: 发现 ${garbledCount} 处替换字符`);
+    throw new Error(`文章编码异常: 检测到 ${garbledCount} 处乱码`);
+  }
+  console.log(`✅ 编码检查通过 (${garbledCount} 处替换字符，在容忍范围内)`);
+  
   // 保存
   const articlePath = path.join(outputDir, 'article.md');
   fs.writeFileSync(articlePath, articleWithFrontmatter);
   
   console.log(`\n✅ 文章保存完成：${articlePath}`);
-  console.log(`📊 字数：${articleWithFrontmatter.length} 字符`);
   
   return articlePath;
 }
