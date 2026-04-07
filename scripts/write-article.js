@@ -17,7 +17,74 @@ function expandHome(filepath) {
   return filepath;
 }
 
-// 通过笔杆子 agent 生成文章（spawn流式，避免execSync缓冲区死锁）
+/**
+ * 从 OpenClaw 配置加载模型信息
+ * 换模型只需改 ~/.openclaw/openclaw.json
+ */
+function loadModelConfig() {
+  const configPath = path.join(os.homedir(), '.openclaw/openclaw.json');
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const providers = config.models?.providers || {};
+    
+    // 1. 优先读 agents.defaults.model.primary（和 OpenClaw 会话一致的默认模型）
+    const defaultModel = config.agents?.defaults?.model?.primary;
+    if (defaultModel && defaultModel.includes('/')) {
+      const [providerName, modelId] = defaultModel.split('/', 2);
+      const provider = providers[providerName];
+      if (provider) {
+        const cfg = {
+          hostname: new URL(provider.baseUrl).hostname,
+          path: new URL(provider.baseUrl).pathname.replace(/\/$/, '') + '/chat/completions',
+          apiKey: provider.apiKey,
+          model: modelId,
+          provider: providerName
+        };
+        console.log(`🤖 使用默认模型: ${defaultModel}`);
+        return cfg;
+      }
+    }
+    
+    // 2. 兼容旧版 defaultModel 字段
+    const oldDefault = config.models?.defaultModel || config.defaultModel;
+    if (oldDefault && oldDefault.includes('/')) {
+      const [providerName, modelId] = oldDefault.split('/', 2);
+      const provider = providers[providerName];
+      if (provider) {
+        const cfg = {
+          hostname: new URL(provider.baseUrl).hostname,
+          path: new URL(provider.baseUrl).pathname.replace(/\/$/, '') + '/chat/completions',
+          apiKey: provider.apiKey,
+          model: modelId,
+          provider: providerName
+        };
+        console.log(`🤖 使用模型: ${oldDefault}`);
+        return cfg;
+      }
+    }
+    
+    // 3. 用任意可用提供商
+    for (const [name, provider] of Object.entries(providers)) {
+      if (provider.models?.length > 0) {
+        const cfg = {
+          hostname: new URL(provider.baseUrl).hostname,
+          path: new URL(provider.baseUrl).pathname.replace(/\/$/, '') + '/chat/completions',
+          apiKey: provider.apiKey,
+          model: provider.models[0].id,
+          provider: name
+        };
+        console.log(`🤖 使用模型: ${name}/${cfg.model}`);
+        return cfg;
+      }
+    }
+  } catch (e) {
+    console.warn(`⚠️ 无法读取配置: ${e.message}`);
+  }
+  
+  // 最终回退
+  throw new Error('无法获取模型配置，请检查 ~/.openclaw/openclaw.json');
+}
+
 // 通过直接API调用生成文章（避免openclaw agent被SIGKILL）
 async function writeArticleWithAgent(prompt, topic) {
   console.log('✍️ 通过API直接调用生成文章...');
@@ -37,9 +104,11 @@ ${prompt}
 
 请直接开始写作：`;
 
-  const apiKey = 'sk-7795ea7cafd74636834b271471022594';
+  // 从 OpenClaw 配置动态加载模型
+  const modelConfig = loadModelConfig();
+  
   const body = JSON.stringify({
-    model: 'qwen3.6-plus',
+    model: modelConfig.model,
     messages: [{ role: 'user', content: message }],
     temperature: 0.8,
     max_tokens: 8192
@@ -50,12 +119,12 @@ ${prompt}
   try {
     const response = await new Promise((resolve, reject) => {
       const req = https.request({
-        hostname: 'dashscope.aliyuncs.com',
-        path: '/compatible-mode/v1/chat/completions',
+        hostname: modelConfig.hostname,
+        path: modelConfig.path,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
+          'Authorization': `Bearer ${modelConfig.apiKey}`
         },
         timeout: 600000
       }, (res) => {
