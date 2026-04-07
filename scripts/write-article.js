@@ -22,6 +22,38 @@ function expandHome(filepath) {
  * 换模型只需改 ~/.openclaw/openclaw.json
  */
 function loadModelConfig() {
+  // 端点映射：coding 端点 -> 通用聊天端点
+  const ENDPOINT_MAP = {
+    'coding.dashscope.aliyuncs.com': {
+      hostname: 'dashscope.aliyuncs.com',
+      pathPrefix: '/compatible-mode/v1',
+      // coding 端点的 Key 不兼容通用端点，用 bailian-plus 的 Key
+      fallbackApiKeyProvider: 'bailian-plus'
+    }
+  };
+
+  function resolveEndpoint(baseUrl, providerName, providers) {
+    const url = new URL(baseUrl);
+    const mapping = ENDPOINT_MAP[url.hostname];
+    let apiKey = null;
+    if (mapping) {
+      // 优先用 fallback provider 的 Key
+      if (mapping.fallbackApiKeyProvider && providers[mapping.fallbackApiKeyProvider]) {
+        apiKey = providers[mapping.fallbackApiKeyProvider].apiKey;
+        console.log(`   ⚡ ${providerName} 端点映射到通用聊天端点，使用 ${mapping.fallbackApiKeyProvider} 的 API Key`);
+      }
+      return {
+        hostname: mapping.hostname,
+        path: mapping.pathPrefix + '/chat/completions',
+        apiKey
+      };
+    }
+    return {
+      hostname: url.hostname,
+      path: url.pathname.replace(/\/$/, '') + '/chat/completions'
+    };
+  }
+
   const configPath = path.join(os.homedir(), '.openclaw/openclaw.json');
   try {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -33,10 +65,11 @@ function loadModelConfig() {
       const [providerName, modelId] = defaultModel.split('/', 2);
       const provider = providers[providerName];
       if (provider) {
+        const ep = resolveEndpoint(provider.baseUrl, providerName, providers);
         const cfg = {
-          hostname: new URL(provider.baseUrl).hostname,
-          path: new URL(provider.baseUrl).pathname.replace(/\/$/, '') + '/chat/completions',
-          apiKey: provider.apiKey,
+          hostname: ep.hostname,
+          path: ep.path,
+          apiKey: ep.apiKey || provider.apiKey,
           model: modelId,
           provider: providerName
         };
@@ -51,10 +84,11 @@ function loadModelConfig() {
       const [providerName, modelId] = oldDefault.split('/', 2);
       const provider = providers[providerName];
       if (provider) {
+        const ep = resolveEndpoint(provider.baseUrl, providerName, providers);
         const cfg = {
-          hostname: new URL(provider.baseUrl).hostname,
-          path: new URL(provider.baseUrl).pathname.replace(/\/$/, '') + '/chat/completions',
-          apiKey: provider.apiKey,
+          hostname: ep.hostname,
+          path: ep.path,
+          apiKey: ep.apiKey || provider.apiKey,
           model: modelId,
           provider: providerName
         };
@@ -66,10 +100,11 @@ function loadModelConfig() {
     // 3. 用任意可用提供商
     for (const [name, provider] of Object.entries(providers)) {
       if (provider.models?.length > 0) {
+        const ep = resolveEndpoint(provider.baseUrl, name, providers);
         const cfg = {
-          hostname: new URL(provider.baseUrl).hostname,
-          path: new URL(provider.baseUrl).pathname.replace(/\/$/, '') + '/chat/completions',
-          apiKey: provider.apiKey,
+          hostname: ep.hostname,
+          path: ep.path,
+          apiKey: ep.apiKey || provider.apiKey,
           model: provider.models[0].id,
           provider: name
         };
