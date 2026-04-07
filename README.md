@@ -1,63 +1,161 @@
 # 📝 微信公众号提示词写作助手 (wechat-prompt-context)
 
-通过提示词工程生成高质量公众号文章，支持人机协作确认，确保输出质量。核心特点是**可控的AI写作**——用户参与提示词设计过程，而非完全自动化。
+通过提示词工程 + 笔杆子 agent 生成高质量公众号文章，支持人机协作确认，确保输出质量。
+
+核心特点：**可控的 AI 写作** — 用户参与提示词设计，笔杆子 agent 负责创作，自动过滤思考过程，输出纯净文章。
 
 [![GitHub](https://img.shields.io/badge/GitHub-jiashaoshan-blue)](https://github.com/jiashaoshan/wechat-prompt-context)
 
 ---
 
-## 📦 安装
+## ✨ 功能特性
 
-### 1. 克隆仓库
+- **🧠 智能主题分析**：自动搜索小红书/知乎/公众号高赞内容，生成推荐主题
+- **📝 双模式提示词生成**：固定模板优化 / 示例文章反推
+- **🤖 笔杆子 agent 创作**：调用 OpenClaw `creator` agent，支持 Supermemory 记忆注入
+- **🛡️ 思考过程过滤**：自动过滤 agent 的英文 planning 和元信息，只保留纯净文章
+- **🖼️ 智能封面**：Pexels 真实图片优先，豆包 AI 生成备选
+- **📊 内容校验拦截**：字数 <1500 或乱码 >5 处自动拦截
+- **🎨 多主题发布**：16+ 套排版主题（pie / lapis / newsroom 等）
+- **👥 人机协作**：提示词确认机制，支持多轮修改
 
-```bash
-git clone https://github.com/jiashaoshan/wechat-prompt-context.git
-cd wechat-prompt-context
+---
+
+## 🏗️ 技术架构
+
+### 完整工作流
+
+```
+用户输入
+├── 模糊主题词（必填）
+├── 示例文章链接（可选，用于风格反推）
+└── 主题样式（可选，默认 pie）
+    ↓
+┌─────────────────────────────────────────┐
+│ 步骤1: 分析主题 (analyze-topic.js)       │
+│ ├─ 搜索小红书高赞内容                     │
+│ ├─ 搜索知乎高赞内容                       │
+│ ├─ 搜索公众号高赞内容                     │
+│ └─ LLM 分析 → 推荐主题 + 文章类型          │
+├─────────────────────────────────────────┤
+│ 步骤2: 生成提示词                          │
+│ ├─ 方式A: 固定模板 + 专家优化              │
+│ │   (无示例文章时使用)                     │
+│ └─ 方式B: 示例文章反推                    │
+│     (有参考链接时使用)                     │
+├─────────────────────────────────────────┤
+│ 步骤3: 用户确认 (可选)                     │
+│ ├─ 展示提示词                             │
+│ ├─ 用户选择: 确认 / 修改 / 退出            │
+│ └─ 最多 5 轮确认                          │
+├─────────────────────────────────────────┤
+│ 步骤4: 生成文章 (write-article.js)        │
+│ ├─ 封面生成: Pexels / 豆包 AI              │
+│ ├─ 调用笔杆子 agent 创作                  │
+│ │   └── openclaw agent --agent creator   │
+│ ├─ 过滤思考过程 (filterAgentOutput)       │
+│ ├─ 内容校验 (字数 + 编码)                 │
+│ └─ 输出: article.md + cover.jpg          │
+├─────────────────────────────────────────┤
+│ 步骤5: 发布 (publish.js)                  │
+│ ├─ 校验 Frontmatter 完整性               │
+│ ├─ 校验字数 ≥ 1500                        │
+│ ├─ 封面压缩 (如需要)                      │
+│ └─ wenyan-cli publish → 微信草稿箱         │
+└─────────────────────────────────────────┘
 ```
 
-### 2. 安装依赖
+### 核心模块
 
-本技能依赖以下外部服务，请确保已配置：
+| 模块 | 文件 | 功能 | 输出 |
+|------|------|------|------|
+| **主题分析** | `analyze-topic.js` | 多平台搜索 + LLM 分析 | 推荐主题 + 文章类型 |
+| **提示词生成** | `generate-prompt.js` | 模板方式生成提示词 | 完整提示词 |
+| **提示词提取** | `extract-prompt.js` | 示例文章反推提示词 | 风格化提示词 |
+| **提示词确认** | `confirm-prompt.js` | 交互式确认/修改 | 确认后的提示词 |
+| **文章生成** | `write-article.js` | 笔杆子 agent 创作 + 过滤 | article.md + cover.jpg |
+| **发布** | `publish.js` | 校验 + 发布到微信 | 草稿箱文章 |
+| **主入口** | `main.js` | 完整流程编排 | 全流程执行 |
 
-#### 必需依赖
+### 文章生成架构
 
-| 依赖 | 用途 | 安装/配置方式 |
-|------|------|--------------|
+```
+write-article.js
+    │
+    ├── generateCover()
+    │   ├── 尝试 Pexels (真实图片)
+    │   └── 备选 豆包 AI 生成
+    │
+    ├── writeArticleWithAgent()
+    │   └── execSync: openclaw agent --agent creator
+    │       ├── 笔杆子 agent 创作
+    │       └── 返回 rawOutput (可能含 thinking)
+    │
+    ├── filterAgentOutput()
+    │   ├── 检测 "Let me write" 等标记
+    │   ├── 截取纯净中文文章
+    │   └── 过滤英文 planning
+    │
+    ├── validateContent()
+    │   ├── 字数检查 ≥ 1500
+    │   └── 编码检查 (替换字符 ≤ 5)
+    │
+    └── addFrontmatter()
+        ├── title / cover / author / date / tags
+        └── 输出完整 article.md
+```
+
+### 关键设计决策
+
+| 决策 | 方案 | 原因 |
+|------|------|------|
+| 文章生成 | `openclaw agent --agent creator` | 利用 agent 框架级模型管理 + Supermemory |
+| 思考过程过滤 | `filterAgentOutput()` | agent 会输出英文 planning，需过滤 |
+| 封面策略 | Pexels 优先 → 豆包备选 | 真实图片质量更高 |
+| 内容校验 | 生成后 + 发布前双阶段 | 确保不完整文章不发布 |
+| 模型选择 | agent 默认模型配置 | 通过 `openclaw.json` 统一管理 |
+
+---
+
+## 📦 依赖
+
+### 必需依赖
+
+| 依赖 | 用途 | 配置方式 |
+|------|------|----------|
 | **Node.js** | 运行环境 | [官网下载](https://nodejs.org/) |
-| **笔杆子 agent** | 文章生成（支持 Supermemory） | OpenClaw 内置 |
-| **豆包 API** | 封面图生成 | 配置 OpenClaw 的豆包模型 |
+| **笔杆子 agent** | 文章生成 | OpenClaw 内置 (`creator`) |
+| **豆包 API** | 封面图生成 | 配置 OpenClaw 豆包模型 |
 | **Tavily API** | 小红书/知乎搜索 | OpenClaw 内置 |
 
-#### 可选依赖（用于示例文章反推）
+### 发布依赖（可选）
 
 | 依赖 | 用途 | 安装方式 |
 |------|------|----------|
-| **wechat-article-search** | 公众号文章搜索 | `openclaw skills install wechat-article-search` |
-| **wechat-toolkit** | 公众号发布 | `openclaw skills install wechat-toolkit` |
-| **prompt-engineering-expert** | 提示词优化 | `openclaw skills install prompt-engineering-expert` |
-| **wechat-ai-writer** | AI写作辅助 | `openclaw skills install wechat-ai-writer` |
+| `wechat-mp-publisher` | 公众号发布 | `~/.openclaw/workspace/skills/wechat-mp-publisher` |
+| `wenyan-cli` | 发布工具 | `npm install -g @wenyan-md/cli` |
 
-### 3. 配置环境变量
+### OpenClaw Agent 配置
 
-发布到公众号需要设置：
+```jsonc
+{
+  "agents": {
+    "list": [
+      {
+        "id": "creator",
+        "name": "笔杆子",
+        "workspace": "~/.openclaw/workspace-creator"
+      }
+    ]
+  }
+}
+```
+
+### 环境变量
 
 ```bash
 export WECHAT_APP_ID="your_wechat_app_id"
 export WECHAT_APP_SECRET="your_wechat_app_secret"
-```
-
-或在 `~/.zshrc` 中添加永久配置。
-
-### 4. 配置文件
-
-编辑 `config/default.yaml` 自定义默认设置：
-
-```yaml
-# 默认设置
-defaults:
-  theme: "pie"           # 默认发布主题
-  articleType: "story"   # 默认文章类型
-  highlight: "github"    # 默认代码高亮
 ```
 
 ---
@@ -109,127 +207,30 @@ node scripts/publish.js "path/to/article.md" newsroom
 
 ## 📖 详细文档
 
-### 设计理念
-
-#### 为什么做这个技能？
-
-现有AI写作工具的问题：
-- **全自动生成**：用户无法控制文章风格和结构
-- **风格单一**：所有文章都像一个模子刻出来的
-- **质量不稳定**：有时好有时差，难以预期
-
-**wechat-prompt-context** 的解决思路：
-- **人机协作**：AI生成提示词，用户确认后再生成文章
-- **风格可控**：通过示例文章反推，精确模仿特定风格
-- **质量保障**：用户参与提示词设计，确保输出符合预期
-
-#### 核心设计原则
-
-1. **提示词即产品** - 好的提示词决定好的文章
-2. **用户参与** - 不是全自动，而是人机协作
-3. **风格可控** - 支持通过示例文章精确控制风格
-4. **迭代优化** - 不满意可以修改提示词重新生成
-
----
-
-### 技术架构
-
-```
-用户输入
-├── 模糊主题词（必填）
-├── 示例文章链接（可选）
-└── 主题样式（可选，默认pie）
-    ↓
-[步骤1: 分析主题]
-    ├── 搜索小红书高赞
-    ├── 搜索知乎高赞
-    ├── 搜索公众号高赞
-    └── LLM智能分析生成推荐主题
-    ↓
-[步骤2: 生成提示词] ←─┐
-    ├── 有示例链接？ ──┤
-    │   ├── 是 → 反推提示词（方式B）
-    │   └── 否 → 模板+专家优化（方式A）
-    ↓
-[步骤3: 用户确认] ←───┘（不满意返回步骤2）
-    ├── 展示提示词
-    ├── 用户选择：确认/修改/退出
-    └── 修改意见 → 重新生成
-    ↓
-[步骤4: 生成文章]
-    ├── 调用LLM生成完整文章
-    ├── 生成封面图（豆包AI）
-    └── 添加Frontmatter
-    ↓
-[步骤5: 发布]
-    └── 使用指定主题发布到公众号草稿箱
-```
-
-### 5步完整工作流
-
-| 步骤 | 模块 | 功能 | 输出 |
-|------|------|------|------|
-| 1 | **analyze-topic.js** | 智能分析模糊主题词 | 推荐主题+文章类型+目标读者+核心卖点 |
-| 2 | **generate-prompt.js** / **extract-prompt.js** | 生成提示词（双模式） | 完整提示词 |
-| 3 | **confirm-prompt.js** | 用户确认提示词 | 确认后的提示词 |
-| 4 | **write-article.js** | 通过笔杆子 agent 生成文章 | article.md + cover.jpg |
-| 5 | **publish.js** | 发布到公众号 | 草稿箱文章 |
-
-### 文章生成方式（v1.2 更新）
-
-**动态模型配置（推荐）**：
-```
-write-article.js
-    ↓
-读取 openclaw.json → agents.defaults.model.primary
-    ↓
-直连 LLM API（无需 agent 子进程）
-    ↓
-生成文章
-```
-
-**优势**：
-- ✅ 自动跟随 OpenClaw 默认模型，改配置即生效
-- ✅ 直连 API，无子进程 OOM 风险
-- ✅ 支持所有配置的提供商（bailian-plus/moonshot/deepseek/claude 等）
-- ✅ 无需硬编码 API Key，从配置文件动态读取
-- ✅ 内容校验：字数 <1500 或乱码 >5 处自动拦截
-- ✅ 失败回退：兼容旧版 defaultModel 字段
-
-**模型切换**：只需修改 `openclaw.json` 中的 `agents.defaults.model.primary`，脚本自动跟随。
-
----
-
 ### 双模式提示词生成
 
-#### 方式A：固定模板 + prompt-engineering-expert 优化
+#### 方式A：固定模板 + 专家优化
 
 ```
 固定提示词模板（基础框架）
     ↓
-+ prompt-engineering-expert 技能优化
-    - 添加XML标签明确结构
-    - 增加Few-shot示例
-    - 明确约束条件
++ 文章类型模板（story / analysis / list / opinion）
     ↓
 + 模糊主题词的具体内容填充
     ↓
 = 完善的最终提示词
 ```
 
-**适用场景**：
-- 没有参考文章
-- 需要标准公众号风格
-- 快速生成
+**适用场景**：没有参考文章、需要标准公众号风格、快速生成。
 
 #### 方式B：示例文章反推
 
 ```
 示例文章链接
     ↓
-提取文章内容（web_fetch/browser）
+提取文章内容（web_fetch / browser）
     ↓
-LLM分析：
+LLM 分析：
     - 文章结构和风格
     - 写作技巧和特点
     - 语言表达方式
@@ -237,21 +238,18 @@ LLM分析：
 生成相似风格的提示词
 ```
 
-**适用场景**：
-- 有喜欢的参考文章
-- 需要模仿特定风格
-- 精确控制输出质量
+**适用场景**：有喜欢的参考文章、需要模仿特定风格、精确控制输出质量。
 
 ---
 
-### 4种文章类型模板
+### 文章类型模板
 
-| 类型 | 文件 | 适用场景 | 特点 |
-|------|------|----------|------|
-| **story** | story.md | 情感、人物、经历 | 故事化、口语化、金句 |
-| **analysis** | analysis.md | 商业、科技、趋势 | 逻辑清晰、数据支撑 |
-| **list** | list.md | 干货、攻略、方法论 | 步骤清晰、可操作 |
-| **opinion** | opinion.md | 评论、观点、思考 | 有态度、论据扎实 |
+| 类型 | 适用场景 | 特点 |
+|------|----------|------|
+| **story** | 情感、人物、经历 | 故事化、口语化、金句 |
+| **analysis** | 商业、科技、趋势 | 逻辑清晰、数据支撑 |
+| **list** | 干货、攻略、方法论 | 步骤清晰、可操作 |
+| **opinion** | 评论、观点、思考 | 有态度、论据扎实 |
 
 ---
 
@@ -268,94 +266,28 @@ LLM分析：
     ├── [view/v] → 再次查看
     └── [quit/q] → 退出
     ↓
-（最多5轮确认）
+（最多 5 轮确认）
 ```
 
-**用户反馈示例**：
-- "增加更多案例"
-- "语气更口语化一些"
+**有效反馈示例**：
+- "增加 3 个具体案例"
+- "语气更口语化，像朋友聊天"
+- "针对 25-35 岁职场人群"
 - "减少理论，增加故事"
-- "针对职场人群"
 
 ---
 
-### 配置说明
+### 发布主题选择
 
-编辑 `config/default.yaml`：
+| 文章类型 | 推荐主题 |
+|----------|----------|
+| 商业分析 | `newsroom`, `lapis` |
+| 情感故事 | `ember`, `orangeheart` |
+| 科技评论 | `lapis`, `phycat` |
+| 生活感悟 | `sage`, `pie` |
+| 创意设计 | `aurora`, `purple` |
 
-```yaml
-# 默认设置
-defaults:
-  theme: "pie"           # 默认发布主题
-  articleType: "story"   # 默认文章类型
-  highlight: "github"    # 默认代码高亮
-
-# 文章类型映射
-articleTypes:
-  story:
-    name: "故事型"
-    description: "适合情感、人物、经历类文章"
-    template: "story.md"
-  analysis:
-    name: "分析型"
-    description: "适合商业、科技、趋势分析"
-    template: "analysis.md"
-  list:
-    name: "清单型"
-    description: "适合干货、攻略、方法论"
-    template: "list.md"
-  opinion:
-    name: "观点型"
-    description: "适合评论、观点、思考"
-    template: "opinion.md"
-
-# 发布主题列表
-themes:
-  builtin:
-    - pie          # 简洁优雅，默认推荐
-    - lapis        # 深蓝配色，专业感
-    - orangeheart  # 暖橙色调，活力感
-    - rainbow      # 彩虹渐变，活泼感
-    - maize        # 玉米黄，温暖感
-    - purple       # 紫色调，神秘感
-    - phycat       # 物理猫，科技感
-    - default      # 简约默认
-  custom:
-    - aurora       # 极光渐变，视觉冲击
-    - newsroom     # 报纸风格，严肃感
-    - sage         # 清新自然，绿色调
-    - ember        # 暖色调，温馨感
-
-# 代码高亮主题
-highlights:
-  - github
-  - github-dark
-  - atom-one-dark
-  - atom-one-light
-  - dracula
-  - monokai
-  - solarized-dark
-  - solarized-light
-  - xcode
-
-# LLM配置
-llm:
-  model: "kimi-k2.5"
-  maxTokens: 4096
-  temperature: 1
-
-# 搜索配置
-search:
-  xiaohongshu:
-    enabled: true
-    maxResults: 5
-  zhihu:
-    enabled: true
-    maxResults: 5
-  wechat:
-    enabled: true
-    maxResults: 5
-```
+完整主题列表见 `config/default.yaml`。
 
 ---
 
@@ -367,66 +299,28 @@ output/
 ├── generated_prompt.txt    # 生成的提示词
 ├── confirmed_prompt.txt    # 确认后的提示词
 ├── extracted_prompt.json   # 从示例提取的提示词
-├── article.md              # 完整文章（含Frontmatter）
-└── cover.jpg               # 豆包生成的封面图
+├── article.md              # 完整文章（含 Frontmatter）
+└── cover.jpg               # 封面图
 ```
 
 ---
 
 ## 🎯 最佳实践
 
-### 1. 主题词设计
+### 主题词设计
 
 **好的主题词**：
-- ✅ "第一批用AI搞钱的年轻人"
-- ✅ "职场PUA：那些没人敢说的真相"
-- ✅ "为什么管理中的禅修总是让你焦虑"
+- ✅ "第一批用 AI 搞钱的年轻人"
+- ✅ "职场 PUA：那些没人敢说的真相"
 
 **差的主题词**：
 - ❌ "AI"（太宽泛）
 - ❌ "职场"（太笼统）
-- ❌ "赚钱方法"（太普通）
 
-### 2. 示例文章选择
+### 示例文章选择
 
-**好的示例**：
-- ✅ 10万+阅读的爆款文章
-- ✅ 风格明确、特点鲜明
-- ✅ 与目标文章类型一致
-
-**差的示例**：
-- ❌ 风格模糊的文章
-- ❌ 纯图片/视频内容
-- ❌ 需要登录才能查看
-
-### 3. 提示词修改技巧
-
-**有效反馈**：
-- "增加3个具体案例"
-- "语气更口语化，像朋友聊天"
-- "针对25-35岁职场人群"
-- "减少理论，增加故事"
-
-**无效反馈**：
-- "写得更好一点"（太模糊）
-- "改一下"（不具体）
-
-### 4. 主题样式选择
-
-| 文章类型 | 推荐主题 |
-|----------|----------|
-| 商业分析 | newsroom, lapis |
-| 情感故事 | ember, orangeheart |
-| 科技评论 | lapis, phycat |
-| 生活感悟 | sage, pie |
-| 创意设计 | aurora, purple |
-| 科技深度报道 | tech-report |
-| 消费趋势·品牌营销 | marketing-trend |
-| 深度调查·社会纪实 | investigation |
-| 影视评论·文化分析 | cinema-culture |
-| 生活方式·心灵疗愈 | lifestyle-healing |
-| 教育推广·课程营销 | edu-course |
-| 行业趋势·职业演进 | industry-evolution |
+**好的示例**：10 万 + 爆款、风格明确、与目标类型一致。
+**差的示例**：风格模糊、需登录才能查看。
 
 ---
 
@@ -434,12 +328,12 @@ output/
 
 | 问题 | 原因 | 解决 |
 |------|------|------|
-| 搜索失败 | Tavily API问题 | 检查网络，稍后重试 |
-| 提示词不满意 | 模板不匹配 | 使用方式B（示例反推） |
-| 用户确认循环过多 | 需求不明确 | 给出具体修改意见 |
-| 封面生成失败 | 豆包API问题 | 使用默认占位图 |
-| 发布失败 | 环境变量未设置 | 设置WECHAT_APP_ID/SECRET |
-| IP不在白名单 | 公众号限制 | 添加IP到白名单 |
+| 搜索失败 | Tavily API 问题 | 检查网络，稍后重试 |
+| 提示词不满意 | 模板不匹配 | 使用方式 B（示例反推） |
+| 文章含英文思考 | agent 输出未过滤 | 确认 `filterAgentOutput()` 已启用 |
+| 封面生成失败 | Pexels/豆包 API 问题 | 使用默认占位图 |
+| 发布失败 | 环境变量未设置 | 设置 `WECHAT_APP_ID` / `SECRET` |
+| IP 不在白名单 | 公众号限制 | 添加服务器 IP 到白名单 |
 
 ---
 
@@ -451,47 +345,49 @@ output/
 | **用户参与** | 全自动，无干预 | **参与提示词设计** |
 | **风格控制** | 固定模板 | **模板/示例双模式** |
 | **质量保证** | 依赖模板质量 | **用户确认提示词** |
-| **生成时间** | 较快（全自动） | 稍慢（需用户确认） |
 | **适用场景** | 批量快速生成 | **精品文章创作** |
-| **学习成本** | 低 | 中（需理解提示词） |
-| **输出稳定性** | 中等 | **高（用户确认后）** |
-
-**使用建议**：
-- 需要快速批量生成 → wechat-ai-writer
-- 需要精品可控输出 → wechat-prompt-context
 
 ---
 
 ## 📝 更新日志
 
-- **v1.3** - 2026-04-07
-  - 动态读取 OpenClaw 默认模型配置
-  - 从 `agents.defaults.model.primary` 自动获取模型、URL、API Key
-  - 无需改代码，改 `openclaw.json` 即可切换模型
-  - 直连 API 替代 agent 子进程，避免 OOM SIGKILL
-  - 内容完整性校验：字数 <1500 或乱码 >5 处自动拦截
-  - 支持环境变量 `ARTICLE_MODEL_PROVIDER` 临时覆盖
+### v1.4 (2026-04-07)
 
-- **v1.2** - 2026-04-05
-  - 新增7种文章类型模板（共11种）
-  - tech-report: 科技深度报道
-  - marketing-trend: 消费趋势·品牌营销
-  - investigation: 深度调查·社会纪实
-  - cinema-culture: 影视评论·文化分析
-  - lifestyle-healing: 生活方式·心灵疗愈
-  - edu-course: 教育推广·课程营销
-  - industry-evolution: 行业趋势·职业演进
-  - 更新 analyze-topic.js 文章类型智能识别
+- ✅ 改用 `笔杆子 agent` 生成文章（`openclaw agent --agent creator`）
+- ✅ 新增 `filterAgentOutput()` 过滤 agent 思考过程和元信息
+- ✅ 提示词增加禁止输出过渡语的约束
+- ✅ 文章开头完整保留，不再截断
+- ✅ 移除直接 API 调用逻辑，统一走 agent 框架
+- ✅ 内容校验双阶段拦截（生成 + 发布前）
 
-- **v1.1** - 2026-03-30
-  - 重构文章生成：通过笔杆子 agent 路由
-  - 支持 Supermemory 记忆自动注入
-  - 失败自动回退到直接 LLM 调用
-  - 字数要求调整：2000-3000 字
+### v1.3 (2026-04-07)
 
-- **v1.0** - 初始版本
-  - 支持模糊主题分析
-  - 支持模板生成和示例反推两种提示词生成方式
-  - 支持人机协作确认
-  - 支持多主题样式发布
-  - 4种文章类型模板
+- ✅ 动态读取 OpenClaw 默认模型配置
+- ✅ 从 `agents.defaults.model.primary` 自动获取模型
+- ✅ 直连 API 替代 agent 子进程（已废弃，改用 agent）
+- ✅ 内容完整性校验：字数 <1500 或乱码 >5 处自动拦截
+
+### v1.2 (2026-04-05)
+
+- ✅ 新增 7 种文章类型模板（共 11 种）
+- ✅ 更新 analyze-topic.js 文章类型智能识别
+
+### v1.1 (2026-03-30)
+
+- ✅ 重构文章生成：通过笔杆子 agent 路由
+- ✅ 支持 Supermemory 记忆自动注入
+- ✅ 失败自动回退到直接 LLM 调用
+
+### v1.0 - 初始版本
+
+- ✅ 支持模糊主题分析
+- ✅ 支持模板生成和示例反推两种提示词生成方式
+- ✅ 支持人机协作确认
+- ✅ 支持多主题样式发布
+- ✅ 4 种文章类型模板
+
+---
+
+## 📄 License
+
+MIT License © 2026 Yang Yanqing
