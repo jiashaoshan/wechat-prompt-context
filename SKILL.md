@@ -78,8 +78,7 @@ metadata:
 | **输入层** | CLI参数 | 主题词、示例链接、主题样式 |
 | **搜索层** | Tavily API | 小红书/知乎高赞搜索 |
 | | wechat-article-search | 公众号高赞搜索 |
-| **生成层** | 笔杆子 agent | OpenClaw agent 路由，支持 Supermemory |
-| | prompt-engineering-expert | 提示词优化 |
+| **生成层** | 直连 LLM API | 动态读取 OpenClaw 默认模型，无需 agent 子进程 |
 | | 豆包Seedream 5.0 | 封面图生成 |
 | **确认层** | Node.js readline | 交互式用户确认 |
 | **发布层** | wechat-mp-publisher | 公众号发布（优先） |
@@ -99,27 +98,25 @@ metadata:
 | 4 | **write-article.js** | 通过笔杆子 agent 生成文章 | article.md + cover.jpg |
 | 5 | **publish.js** | 发布到公众号 | 草稿箱文章 |
 
-### 文章生成方式（v1.1 更新）
+### 文章生成方式（v1.2 更新）
 
-**笔杆子 agent 路由（推荐）**：
+**动态模型配置（推荐）**：
 ```
 write-article.js
     ↓
-openclaw agent --agent creator
+读取 openclaw.json → agents.defaults.model.primary
     ↓
-Supermemory 自动注入
+直连 LLM API（无需 agent 子进程）
     ↓
 生成文章
 ```
 
 **优势**：
-- ✅ 自动整合 Supermemory 长期记忆
-- ✅ 支持框架级模型配置
-- ✅ 无需手动管理 API Key
-- ✅ 失败自动回退到直接 LLM 调用
-
-**备用：直接 LLM 调用**：
-- 当 agent 路由失败时，自动回退到 `wechat-ai-writer` 的 LLM 客户端
+- ✅ 自动跟随 OpenClaw 默认模型，改配置即生效
+- ✅ 直连 API，无子进程 OOM 风险
+- ✅ 支持所有配置的提供商
+- ✅ 无需硬编码 API Key
+- ✅ 内容校验：字数 <1500 或乱码 >5 处自动拦截
 
 ### 双模式提示词生成
 
@@ -478,6 +475,14 @@ output/
 
 ## 更新日志
 
+- **v1.3** - 2026-04-07
+  - 动态读取 OpenClaw 默认模型配置
+  - 从 `agents.defaults.model.primary` 自动获取模型、URL、API Key
+  - 无需改代码，改 `openclaw.json` 即可切换模型
+  - 直连 API 替代 agent 子进程，避免 OOM SIGKILL
+  - 内容完整性校验：字数 <1500 或乱码 >5 处自动拦截
+  - 支持环境变量 `ARTICLE_MODEL_PROVIDER` 临时覆盖
+
 - **v1.2** - 2026-04-05
   - 新增7种文章类型模板，共11种
   - 科技深度报道、消费趋势、深度调查、影视评论、生活方式、教育推广、行业演进
@@ -509,5 +514,5 @@ output/
 ---
 
 **作者**：主语说  
-**版本**：v1.1  
-**更新日期**：2026-03-30
+**版本**：v1.3  
+**更新日期**：2026-04-07
