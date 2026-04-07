@@ -120,9 +120,11 @@ function loadModelConfig() {
   throw new Error('无法获取模型配置，请检查 ~/.openclaw/openclaw.json');
 }
 
-// 通过直接API调用生成文章（避免openclaw agent被SIGKILL）
+// 通过 creator 笔杆子 agent 生成文章
 async function writeArticleWithAgent(prompt, topic) {
-  console.log('✍️ 通过API直接调用生成文章...');
+  console.log('✍️ 调用笔杆子 agent 生成文章...');
+  
+  const { execSync } = require('child_process');
   
   const message = `请根据以下提示词创作一篇公众号文章：
 
@@ -139,55 +141,28 @@ ${prompt}
 
 请直接开始写作：`;
 
-  // 从 OpenClaw 配置动态加载模型
-  const modelConfig = loadModelConfig();
-  
-  const body = JSON.stringify({
-    model: modelConfig.model,
-    messages: [{ role: 'user', content: message }],
-    temperature: 0.8,
-    max_tokens: 8192
-  });
-  
-  console.log('   🚀 调用API生成文章...');
+  console.log('   🚀 启动笔杆子 agent...');
   
   try {
-    const response = await new Promise((resolve, reject) => {
-      const req = https.request({
-        hostname: modelConfig.hostname,
-        path: modelConfig.path,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${modelConfig.apiKey}`
-        },
-        timeout: 600000
-      }, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve({ status: res.statusCode, data }));
-      });
-      req.on('error', reject);
-      req.on('timeout', () => { req.destroy(); reject(new Error('API超时')); });
-      req.write(body);
-      req.end();
-    });
+    const article = execSync(
+      `openclaw agent --agent creator --message ${JSON.stringify(message)}`,
+      {
+        cwd: process.env.HOME,
+        timeout: 600000,
+        maxBuffer: 50 * 1024 * 1024,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'inherit']
+      }
+    );
     
-    if (response.status !== 200) {
-      throw new Error(`API错误 ${response.status}: ${response.data.slice(0, 300)}`);
-    }
-    
-    const parsed = JSON.parse(response.data);
-    const article = parsed.choices?.[0]?.message?.content || '';
-    
-    if (!article) {
-      throw new Error('API返回内容为空');
+    if (!article || article.trim().length < 100) {
+      throw new Error('agent 返回内容为空或过短');
     }
     
     console.log('   ✅ 文章生成完成');
     return article;
   } catch (e) {
-    throw new Error(`API调用失败: ${e.message}`);
+    throw new Error(`agent 调用失败: ${e.message}`);
   }
 }
 
