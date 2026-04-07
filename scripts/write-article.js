@@ -120,6 +120,61 @@ function loadModelConfig() {
   throw new Error('无法获取模型配置，请检查 ~/.openclaw/openclaw.json');
 }
 
+// 过滤 agent 思考过程和元信息，提取纯净文章
+function filterAgentOutput(rawOutput) {
+  const lines = rawOutput.split('\n');
+  let articleStart = -1;
+  
+  // 策略：找到思考过程结束的位置（"Let me write" 等标记后）
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // 检测思考过程结束标记
+    if (/^(Let me (write|create|start)|Okay, I'm ready|Now I'll)/i.test(line)) {
+      // 这行可能包含文章开头（同一段落）
+      const afterMarker = line.replace(/^(Let me (write|create|start)|Okay, I'm ready|Now I'll)[^\u4e00-\u9fff]*/i, '').trim();
+      if (afterMarker && /[\u4e00-\u9fff]/.test(afterMarker)) {
+        // 同行就有中文内容
+        lines[i] = afterMarker;
+        articleStart = i;
+      } else {
+        // 下一行是文章
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].trim() && /[\u4e00-\u9fff]/.test(lines[j])) {
+            articleStart = j;
+            break;
+          }
+        }
+      }
+      break;
+    }
+  }
+  
+  // 如果没找到标记，用中文密度检测
+  if (articleStart === -1) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      if (/^(Let me|I'll|The user|Requirements|Beginning|Body|Ending|Style|Word count|Format|No explanations)/.test(line)) continue;
+      
+      if (/[\u4e00-\u9fff]/.test(line)) {
+        const remaining = lines.slice(i).join('\n');
+        const chineseCount = (remaining.match(/[\u4e00-\u9fff]/g) || []).length;
+        if (chineseCount > 50) {
+          articleStart = i;
+          break;
+        }
+      }
+    }
+  }
+  
+  if (articleStart > 0) {
+    return lines.slice(articleStart).join('\n');
+  }
+  
+  return rawOutput;
+}
+
 // 通过 creator 笔杆子 agent 生成文章
 async function writeArticleWithAgent(prompt, topic) {
   console.log('✍️ 调用笔杆子 agent 生成文章...');
@@ -137,14 +192,15 @@ ${prompt}
 1. 严格按照提示词的风格和结构要求
 2. 字数 2000-3000 字
 3. 使用 Markdown 格式
-4. 直接输出文章内容，不要包含任何解释或前言
+4. 直接输出文章内容，不要包含任何解释、思考过程或前言
+5. 第一行必须是文章正文，不要输出 "好的"、"Let me" 等过渡语
 
 请直接开始写作：`;
 
   console.log('   🚀 启动笔杆子 agent...');
   
   try {
-    const article = execSync(
+    const rawOutput = execSync(
       `openclaw agent --agent creator --message ${JSON.stringify(message)}`,
       {
         cwd: process.env.HOME,
@@ -155,11 +211,14 @@ ${prompt}
       }
     );
     
-    if (!article || article.trim().length < 100) {
+    if (!rawOutput || rawOutput.trim().length < 100) {
       throw new Error('agent 返回内容为空或过短');
     }
     
-    console.log('   ✅ 文章生成完成');
+    // 过滤思考过程和元信息
+    const article = filterAgentOutput(rawOutput);
+    
+    console.log('   ✅ 文章生成完成（已过滤元信息）');
     return article;
   } catch (e) {
     throw new Error(`agent 调用失败: ${e.message}`);
