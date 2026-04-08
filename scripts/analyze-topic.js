@@ -84,7 +84,7 @@ async function analyzeWithAgent(topic, xiaohongshu, zhihu, wechat) {
   // 构建提示词
   const prompt = `你是一位资深内容策划，擅长分析热点话题，提炼最佳文章角度。
 
-基于以下关于"${topic}"的高赞内容，分析最佳文章角度：
+基于以下关于"${topic}"的高赞内容（优先关注2025-2026年的最新内容），分析最佳文章角度：
 
 【小红书高赞】
 ${xiaohongshu.slice(0, 3).map((x, i) => `${i + 1}. ${x.title}`).join('\n')}
@@ -97,12 +97,18 @@ ${wechat.slice(0, 3).map((w, i) => `${i + 1}. ${w.title}`).join('\n')}
 
 请输出JSON格式：
 {
-  "topic": "推荐文章主题（具体、有吸引力）",
+  "topic": "推荐文章主题（具体、有吸引力，体现2025-2026年最新趋势）",
   "articleType": "推荐文章类型（story/analysis/list/opinion/tech-report）",
   "targetAudience": "目标读者画像",
-  "sellingPoint": "核心卖点/钩子（一句话）",
-  "angle": "独特角度（与现有文章的区别）"
+  "sellingPoint": "核心卖点/钩子（一句话，突出时效性）",
+  "angle": "独特角度（与现有文章的区别，强调最新动态）",
+  "timeSensitivity": "内容时效性说明（如：基于2025-2026年最新数据/事件）"
 }
+
+重要提醒：
+- 优先分析2025-2026年的最新内容和趋势
+- 避免推荐基于2024年及之前过时信息的角度
+- 如果搜索结果是2024年的，请明确标注并建议寻找更新数据源
 
 文章类型选择指南：
 - story: 情感、人物、个人经历
