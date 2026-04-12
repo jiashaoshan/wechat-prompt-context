@@ -268,16 +268,8 @@ tags: ["${topic}"]
 
 // 生成标题
 function generateTitle(topic) {
-  const templates = [
-    `${topic}：那些没人敢说的真相`,
-    `关于${topic}，90%的人都想错了`,
-    `${topic}的真相，看完我沉默了`,
-    `为什么${topic}总是让你焦虑？`,
-    `${topic}：一篇文章说透本质`,
-    `第一批${topic}的人，真的"赚麻了"？`
-  ];
-  
-  return templates[Math.floor(Math.random() * templates.length)];
+  // 直接使用传入的 topic 作为标题
+  return topic;
 }
 
 // 生成封面
