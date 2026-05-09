@@ -1,7 +1,7 @@
 ---
 name: wechat-prompt-context
 description: "通过提示词工程 + 笔杆子 agent 生成高质量公众号文章，支持人机协作确认"
-version: "1.4.0"
+version: "1.4"
 metadata:
   openclaw:
     emoji: "📝"
@@ -90,6 +90,13 @@ node scripts/main.js --topic="AI赚钱" --auto-confirm
 | **analysis** | 商业、科技、趋势 |
 | **list** | 干货、攻略、方法论 |
 | **opinion** | 评论、观点、思考 |
+| **tech-report** | 科技产品深度报道、创业故事 |
+| **marketing-trend** | 消费趋势洞察、品牌营销案例 |
+| **investigation** | 深度调查报道、社会纪实 |
+| **cinema-culture** | 影视评论、文化分析 |
+| **lifestyle-healing** | 生活方式、心灵疗愈 |
+| **edu-course** | 教育类课程推广 |
+| **industry-evolution** | 行业趋势、职业演进 |
 
 ## 发布主题
 
@@ -100,7 +107,10 @@ node scripts/main.js --topic="AI赚钱" --auto-confirm
 ```
 output/
 ├── topic_analysis.json     # 主题分析
+├── search_results.json     # 原始搜索结果
 ├── generated_prompt.txt    # 生成的提示词
+├── confirmed_prompt.txt    # 确认后的提示词
+├── extracted_prompt.json   # 示例反推结果
 ├── article.md              # 完整文章（含 Frontmatter）
 └── cover.jpg               # 封面图
 ```
@@ -115,7 +125,7 @@ output/
 
 ## 版本
 
-### v1.4.0 (2026-04-07)
+### v1.4 (2026-04-07)
 
 - ✅ 改用 `笔杆子 agent` 生成文章
 - ✅ 新增 `filterAgentOutput()` 过滤 agent 思考过程

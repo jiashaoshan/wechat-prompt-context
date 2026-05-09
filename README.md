@@ -250,6 +250,13 @@ LLM 分析：
 | **analysis** | 商业、科技、趋势 | 逻辑清晰、数据支撑 |
 | **list** | 干货、攻略、方法论 | 步骤清晰、可操作 |
 | **opinion** | 评论、观点、思考 | 有态度、论据扎实 |
+| **tech-report** | 科技产品深度报道、创业故事 | 商业模式分析 |
+| **marketing-trend** | 消费趋势洞察、品牌营销案例 | 人群变迁分析 |
+| **investigation** | 深度调查报道、社会纪实 | 事故调查、政策分析 |
+| **cinema-culture** | 影视评论、文化分析 | 票房现象解读 |
+| **lifestyle-healing** | 生活方式、心灵疗愈 | 独处美学、反内卷 |
+| **edu-course** | 教育类课程推广 | 知识付费、课程营销 |
+| **industry-evolution** | 行业趋势、职业演进 | 岗位消亡预警 |
 
 ---
 
@@ -296,6 +303,7 @@ LLM 分析：
 ```
 output/
 ├── topic_analysis.json     # 主题分析结果
+├── search_results.json     # 原始搜索结果（小红书/知乎/公众号）
 ├── generated_prompt.txt    # 生成的提示词
 ├── confirmed_prompt.txt    # 确认后的提示词
 ├── extracted_prompt.json   # 从示例提取的提示词
@@ -369,7 +377,7 @@ output/
 
 ### v1.2 (2026-04-05)
 
-- ✅ 新增 7 种文章类型模板（共 11 种）
+- ✅ 新增 7 种文章类型模板（共 11 种：story/analysis/list/opinion/tech-report/marketing-trend/investigation/cinema-culture/lifestyle-healing/edu-course/industry-evolution）
 - ✅ 更新 analyze-topic.js 文章类型智能识别
 
 ### v1.1 (2026-03-30)
