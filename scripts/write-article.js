@@ -225,11 +225,9 @@ ${prompt}
   }
 }
 
-// 备用：直接调用 LLM
-async function writeArticleWithLLM(prompt, topic) {
+// 备用：直接调用 LLM（支持自定义 LLM 客户端）
+async function writeArticleWithLLM(prompt, topic, chatFn) {
   console.log('✍️ 使用备用 LLM 生成文章...');
-  
-  const { callLLM } = require('../../wechat-ai-writer/scripts/llm-client');
   
   const messages = [
     {
@@ -242,7 +240,14 @@ async function writeArticleWithLLM(prompt, topic) {
     }
   ];
   
-  const article = await callLLM(messages, { maxTokens: 4096 });
+  let article;
+  if (chatFn) {
+    const result = await chatFn(messages, { maxTokens: 4096 });
+    article = (typeof result === 'string') ? result : result.content;
+  } else {
+    const { callLLM } = require('../../wechat-ai-writer/scripts/llm-client');
+    article = await callLLM(messages, { maxTokens: 4096 });
+  }
   
   console.log('   ✅ 文章生成完成');
   return article;
@@ -357,5 +362,6 @@ if (require.main === module) {
 module.exports = { 
   writeArticle: writeArticleWithAgent, 
   writeArticleWithLLM,
+  addFrontmatter,
   main 
 };
