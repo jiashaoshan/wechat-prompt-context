@@ -175,11 +175,11 @@ function filterAgentOutput(rawOutput) {
   return rawOutput;
 }
 
-// 通过 creator 笔杆子 agent 生成文章
+// 通过 creator 笔杆子 agent 生成文章（通过 stdin 传提示词，避免 shell 参数截断乱码）
 async function writeArticleWithAgent(prompt, topic) {
   console.log('✍️ 调用笔杆子 agent 生成文章...');
   
-  const { execSync } = require('child_process');
+  const { spawnSync } = require('child_process');
   
   const message = `请根据以下提示词创作一篇公众号文章：
 
@@ -200,18 +200,24 @@ ${prompt}
   console.log('   🚀 启动笔杆子 agent...');
   
   try {
-    const rawOutput = execSync(
-      `openclaw agent --agent creator --message ${JSON.stringify(message)}`,
-      {
-        cwd: process.env.HOME,
-        timeout: 600000,
-        maxBuffer: 50 * 1024 * 1024,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'inherit']
-      }
-    );
+    // 使用 spawnSync + stdin pipe 替代 execSync + shell 参数，避免命令行长度限制导致的截断乱码
+    const result = spawnSync('openclaw', ['agent', '--agent', 'creator'], {
+      input: message,
+      cwd: process.env.HOME,
+      timeout: 600000,
+      maxBuffer: 50 * 1024 * 1024,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'inherit'],
+      env: { ...process.env },
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    const rawOutput = (result.stdout || '').trim();
     
-    if (!rawOutput || rawOutput.trim().length < 100) {
+    if (!rawOutput || rawOutput.length < 100) {
       throw new Error('agent 返回内容为空或过短');
     }
     
@@ -253,22 +259,36 @@ async function writeArticleWithLLM(prompt, topic, chatFn) {
   return article;
 }
 
-// 添加 Frontmatter
+// 添加 Frontmatter（YAML 安全转义）
 function addFrontmatter(article, topic, coverPath) {
   const title = generateTitle(topic);
-  // 修复：转义title中的双引号，避免YAML解析错误
-  const escapedTitle = title.replace(/"/g, '\\"');
-  const frontmatter = `---
-title: "${escapedTitle}"
-cover: "${coverPath}"
-author: "主语说"
-date: "${new Date().toISOString().split('T')[0]}"
-tags: ["${topic}"]
+  // YAML 安全转义：把特殊字符都处理掉
+  const yamlSafe = (s) => {
+    if (/["\\\n\r\u0085\u2028\u2029]/.test(s)) {
+      // 含特殊字符时用双引号并转义
+      return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"';
+    }
+    if (/[:#{}[\],&*?!|>\-`@%' ]/.test(s) || s === '' || s === 'true' || s === 'false' || s === 'null' || /^\d/.test(s)) {
+      // 含 YAML 敏感字符时用双引号包裹
+      return '"' + s + '"';
+    }
+    return s;
+  };
+  const safeTitle = yamlSafe(title);
+  const safeCover = yamlSafe(coverPath);
+  const safeAuthor = yamlSafe("主语说");
+  const safeTopic = yamlSafe(topic);
+  const safeDate = yamlSafe(new Date().toISOString().split('T')[0]);
+
+  return `---
+title: ${safeTitle}
+cover: ${safeCover}
+author: ${safeAuthor}
+date: ${safeDate}
+tags: [${safeTopic}]
 ---
 
-`;
-  
-  return frontmatter + article;
+` + article;
 }
 
 // 生成标题
@@ -329,11 +349,11 @@ async function main(prompt, topic) {
   const replacementChar = String.fromCharCode(0xFFFD);
   const garbledCount = (body.split(replacementChar).length - 1);
   
-  if (garbledCount > 5) { // 允许少量替换字符
+  if (garbledCount > 1) { // 严格模式：不允许乱码字符
     console.error(`❌ 检测到乱码: 发现 ${garbledCount} 处替换字符`);
     throw new Error(`文章编码异常: 检测到 ${garbledCount} 处乱码`);
   }
-  console.log(`✅ 编码检查通过 (${garbledCount} 处替换字符，在容忍范围内)`);
+  console.log(`✅ 编码检查通过 (${garbledCount} 处替换字符)${garbledCount > 0 ? '，可能存在轻微乱码' : ''}`);
   
   // 保存
   const articlePath = path.join(outputDir, 'article.md');
